@@ -33,7 +33,7 @@
 
 		<!-- Versions -->
 		<mcp.sdk.version>1.1.1</mcp.sdk.version>
-		<langchain4j.version>1.0.0</langchain4j.version>
+		<langchain4j.version>0.35.0</langchain4j.version>
 		<spring.boot.version>3.4.4</spring.boot.version>
 		<jackson.version>2.18.3</jackson.version>
 	</properties>
@@ -103,6 +103,13 @@
 			<version>${langchain4j.version}</version>
 		</dependency>
 
+		<!-- LangChain4j Google AI Gemini -->
+		<dependency>
+			<groupId>dev.langchain4j</groupId>
+			<artifactId>langchain4j-google-ai-gemini</artifactId>
+			<version>${langchain4j.version}</version>
+		</dependency>
+
 		<!-- Jackson (version pinned to avoid conflicts) -->
 		<dependency>
 			<groupId>com.fasterxml.jackson.core</groupId>
@@ -135,7 +142,6 @@
 			<artifactId>spring-boot-starter-test</artifactId>
 			<scope>test</scope>
 		</dependency>
-
 	</dependencies>
 
 	<!-- ─── Build Plugins ───────────────────────────────────────────── -->
