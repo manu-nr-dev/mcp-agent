@@ -3,7 +3,7 @@ package ai.mcp.agent.tools;
 import ai.mcp.agent.agents.ActionAgent;
 import ai.mcp.agent.agents.ResearchAgent;
 import ai.mcp.agent.exception.SpawnBudgetExceededException;
-import dev.langchain4j.agent.tool.Tool;
+import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.atomic.AtomicInteger;
@@ -21,13 +21,13 @@ public class SubAgentTools {
         this.actionAgent = actionAgent;
     }
 
-    @Tool("Delegate a research question to the ResearchAgent. Use for RAG lookups, past incidents, runbook queries.")
+    @Tool(name = "delegateResearch", description = "Delegate a research question to the ResearchAgent. Use for RAG lookups, past incidents, and runbook queries.")
     public String delegateResearch(String query) {
         checkSpawnBudget();
         return researchAgent.research(query);
     }
 
-    @Tool("Delegate an action task to the ActionAgent. Use for DB queries, HTTP calls, remediation steps.")
+    @Tool(name = "delegateAction", description = "Delegate an action task to the ActionAgent. Use for DB queries, HTTP calls, and remediation steps.")
     public String delegateAction(String task) {
         checkSpawnBudget();
         return actionAgent.execute(task);

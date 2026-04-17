@@ -3,6 +3,8 @@ package ai.mcp.agent.config;
 import ai.mcp.agent.tools.DbQueryTool;
 import ai.mcp.agent.tools.RagSearchTool;
 import io.modelcontextprotocol.server.McpServerFeatures;
+import org.jspecify.annotations.NonNull;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
@@ -27,9 +29,16 @@ public class McpServerConfig {
     public WebMvcConfigurer corsConfigurer() {
         return new WebMvcConfigurer() {
             @Override
-            public void addCorsMappings(CorsRegistry registry) {
+            public void addCorsMappings(@NonNull CorsRegistry registry) {
                 registry.addMapping("/**").allowedOrigins("*").allowedMethods("*").allowedHeaders("*");
             }
         };
     }
+
+    @Bean
+    public ChatClient chatClient(ChatClient.Builder builder) {
+        return builder.build();
+    }
+
+
 }
