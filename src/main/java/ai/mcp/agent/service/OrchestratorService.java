@@ -10,14 +10,9 @@ public class OrchestratorService {
     private final ChatClient chatClient;
     private final SubAgentTools subAgentTools;
 
-    public OrchestratorService(ChatClient chatClient, SubAgentTools subAgentTools) {
-        this.chatClient = chatClient;
-        this.subAgentTools = subAgentTools;
-    }
-
-    public String orchestrate(String task) {
-        String raw=chatClient.prompt()
-                .system("""
+    public OrchestratorService(ChatClient.Builder builder, SubAgentTools subAgentTools) {
+        this.chatClient = builder
+                .defaultSystem("""
                         You are an orchestrator with two tools:
                         - delegateResearch: for RAG lookups, knowledge queries
                         - delegateAction: for DB queries, data retrieval
@@ -26,6 +21,14 @@ public class OrchestratorService {
                         After getting tool results, respond with ONLY valid JSON, no explanation, no preamble:
                         { "research": "...", "action": "...", "summary": "..." }
                         """)
+                .build();
+        this.subAgentTools = subAgentTools;
+    }
+
+    public String orchestrate(String task) {
+        subAgentTools.resetSpawnCount();
+
+        String raw = chatClient.prompt()
                 .user(task)
                 .tools(subAgentTools)
                 .call()
