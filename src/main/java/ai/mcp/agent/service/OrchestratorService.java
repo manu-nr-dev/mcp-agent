@@ -1,6 +1,8 @@
 package ai.mcp.agent.service;
 
+import ai.mcp.agent.context.BudgetHolder;
 import ai.mcp.agent.exception.OrchestratorException;
+import ai.mcp.agent.model.AgentBudget;
 import ai.mcp.agent.model.AgentResult;
 import ai.mcp.agent.tools.SubAgentTools;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -49,6 +51,8 @@ public class OrchestratorService {
     }
 
     public String orchestrate(String task) {
+        AgentBudget budget = new AgentBudget(5000);
+        BudgetHolder.set(budget);
         Exception lastException = null;
 
         for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -61,20 +65,34 @@ public class OrchestratorService {
                         .call()
                         .content();
 
+                // Rough orchestrator-level token estimate
+                // Day 59 will replace this with actual usage from ChatResponse
+                budget.record("orchestrator", estimateTokens(raw));
+
+                if (budget.isBudgetExceeded()) {
+                    logger.warn("Budget exceeded after orchestrator call: {}", budget.summary());
+                }
+
+                logger.info(budget.summary());
                 return validateAndExtract(raw);
 
             } catch (OrchestratorException e) {
                 lastException = e;
                 logger.warn("Attempt {}/{} failed: {}", attempt, MAX_RETRIES, e.getMessage());
-
-                if (attempt < MAX_RETRIES) {
-                    logger.info("Retrying...");
-                }
+            }finally {
+                BudgetHolder.clear();
             }
+
         }
 
         throw new OrchestratorException(
                 "All " + MAX_RETRIES + " attempts failed. Last error: " + lastException.getMessage());
+    }
+
+    private int estimateTokens(String text) {
+        if (text == null) return 0;
+        // rough approximation: 1 token ≈ 4 chars
+        return text.length() / 4;
     }
 
     private String validateAndExtract(String raw) {

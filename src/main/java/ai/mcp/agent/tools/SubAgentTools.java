@@ -1,5 +1,7 @@
 package ai.mcp.agent.tools;
 
+import ai.mcp.agent.context.BudgetHolder;
+import ai.mcp.agent.model.AgentBudget;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -26,15 +28,25 @@ public class SubAgentTools {
         try {
             String result = builder.build().mutate()
                     .defaultSystem("""
-                            You have access to the rag_lookup tool.
-                            Use it to search the knowledge base. Be concise and direct.
-                            """)
+                        You have access to the rag_lookup tool.
+                        Use it to search the knowledge base. Be concise and direct.
+                        """)
                     .defaultToolCallbacks(mcpToolCallbackProvider)
                     .build()
                     .prompt()
                     .user(query)
                     .call()
                     .content();
+
+            AgentBudget agentbudget = BudgetHolder.get();
+            if (agentbudget != null) {
+                agentbudget.record("researchAgent", estimateTokens(result));
+            }
+
+            if (agentbudget.isBudgetExceeded()) {
+                logger.warn("Budget exceeded after researchAgent: {}", agentbudget.summary());
+            }
+
             logger.info("delegateResearch result: {}", result);
             return result;
         } catch (Exception e) {
@@ -46,6 +58,7 @@ public class SubAgentTools {
     @Tool(name = "delegateAction", description = "Delegate an action task. Use for DB queries, product lookups, remediation steps.")
     public String delegateAction(String task) {
         logger.info("delegateAction input: {}", task);
+
         try {
             String result = builder.build().mutate()
                     .defaultSystem("""
@@ -58,11 +71,27 @@ public class SubAgentTools {
                     .user(task)
                     .call()
                     .content();
+
+            AgentBudget agentbudget = BudgetHolder.get();
+            if (agentbudget != null) {
+                agentbudget.record("researchAgent", estimateTokens(result));
+            }
+
+            if (agentbudget.isBudgetExceeded()) {
+                logger.warn("Budget exceeded after researchAgent: {}", agentbudget.summary());
+            }
+
             logger.info("delegateAction result: {}", result);
             return result;
         } catch (Exception e) {
             logger.error("delegateAction failed: {}", e.getMessage());
             return "ERROR: " + e.getMessage();
         }
+    }
+
+    private int estimateTokens(String text) {
+        if (text == null) return 0;
+        // rough approximation: 1 token ≈ 4 chars
+        return text.length() / 4;
     }
 }
