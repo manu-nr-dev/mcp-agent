@@ -1,55 +1,68 @@
 package ai.mcp.agent.tools;
 
-import ai.mcp.agent.agents.ActionAgent;
-import ai.mcp.agent.agents.ResearchAgent;
-import ai.mcp.agent.exception.SpawnBudgetExceededException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.stereotype.Component;
-
-import java.util.concurrent.atomic.AtomicInteger;
 
 @Component
 public class SubAgentTools {
 
-    private final ResearchAgent researchAgent;
-    private final ActionAgent actionAgent;
-    private final AtomicInteger spawnCount = new AtomicInteger(0);
-    private static final int MAX_SPAWNS = 3;
-    private final Logger logger= LoggerFactory.getLogger(SubAgentTools.class);
+    private final ChatClient.Builder builder;
+    private final ToolCallbackProvider mcpToolCallbackProvider;
+    private final Logger logger = LoggerFactory.getLogger(SubAgentTools.class);
 
-    public SubAgentTools(ResearchAgent researchAgent, ActionAgent actionAgent) {
-        this.researchAgent = researchAgent;
-        this.actionAgent = actionAgent;
+    public SubAgentTools(ChatClient.Builder builder,
+                         ToolCallbackProvider mcpToolCallbackProvider) {
+        this.builder = builder;
+        this.mcpToolCallbackProvider = mcpToolCallbackProvider;
     }
 
-    @Tool(name = "delegateResearch", description = "Delegate a research question to the ResearchAgent. Use for RAG lookups, past incidents, and runbook queries.")
+    @Tool(name = "delegateResearch", description = "Delegate a research question. Use for RAG lookups, past incidents, runbook queries.")
     public String delegateResearch(String query) {
-        logger.info("research");
-        checkSpawnBudget();
-        String result=researchAgent.research(query);
-        logger.info("ResearchAgent LLM result: {}", result);
-        return result;
-    }
-
-    @Tool(name = "delegateAction", description = "Delegate an action task to the ActionAgent. Use for DB queries, HTTP calls, and remediation steps.")
-    public String delegateAction(String task) {
-        logger.info("action");
-        checkSpawnBudget();
-        String result=actionAgent.execute(task);
-        logger.info("Action LLM result: {}", result);
-        return result;
-    }
-
-    private void checkSpawnBudget() {
-        if (spawnCount.incrementAndGet() > MAX_SPAWNS) {
-            throw new SpawnBudgetExceededException(
-                    "Orchestrator spawn cap (" + MAX_SPAWNS + ") exceeded. Aggregating with available results.");
+        logger.info("delegateResearch input: {}", query);
+        try {
+            String result = builder.build().mutate()
+                    .defaultSystem("""
+                            You have access to the rag_lookup tool.
+                            Use it to search the knowledge base. Be concise and direct.
+                            """)
+                    .defaultToolCallbacks(mcpToolCallbackProvider)
+                    .build()
+                    .prompt()
+                    .user(query)
+                    .call()
+                    .content();
+            logger.info("delegateResearch result: {}", result);
+            return result;
+        } catch (Exception e) {
+            logger.error("delegateResearch failed: {}", e.getMessage());
+            return "ERROR: " + e.getMessage();
         }
     }
 
-    public void resetSpawnCount() {
-        spawnCount.set(0);
+    @Tool(name = "delegateAction", description = "Delegate an action task. Use for DB queries, product lookups, remediation steps.")
+    public String delegateAction(String task) {
+        logger.info("delegateAction input: {}", task);
+        try {
+            String result = builder.build().mutate()
+                    .defaultSystem("""
+                            You have access to the lookup_products tool.
+                            Use it to query the database. Be concise and direct.
+                            """)
+                    .defaultToolCallbacks(mcpToolCallbackProvider)
+                    .build()
+                    .prompt()
+                    .user(task)
+                    .call()
+                    .content();
+            logger.info("delegateAction result: {}", result);
+            return result;
+        } catch (Exception e) {
+            logger.error("delegateAction failed: {}", e.getMessage());
+            return "ERROR: " + e.getMessage();
+        }
     }
 }

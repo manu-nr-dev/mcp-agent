@@ -32,6 +32,7 @@ public class ResearchAgent {
                         You are a research specialist. You have access to the rag_lookup tool.
                         Use the rag_lookup tool to search the knowledge base for information.
                         Return the findings from the tool execution. Be concise and direct.
+                        Don't use this when asked about products.
                         """)
                 .defaultToolCallbacks(mcpToolCallbackProvider)
                 .build()

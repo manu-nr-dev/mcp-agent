@@ -26,7 +26,6 @@ public class OrchestratorController {
     public ResponseEntity<TaskResponse> handleIncident(
             @RequestBody TaskRequest request) {
 
-        subAgentTools.resetSpawnCount();
         String result = orchestratorService.orchestrate(request.task());
 
         return ResponseEntity.ok(new TaskResponse(result));
