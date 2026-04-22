@@ -1,7 +1,9 @@
 package ai.mcp.agent;
 
 import ai.mcp.agent.exception.OrchestratorException;
+import ai.mcp.agent.service.MetricsStore;
 import ai.mcp.agent.service.OrchestratorService;
+import ai.mcp.agent.service.PromptVersionLogger;
 import ai.mcp.agent.service.ResultValidator;
 import ai.mcp.agent.tools.SubAgentTools;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -38,6 +40,8 @@ class OrchestratorFailureModeTests {
     private ResultValidator validator;
     private ObjectMapper objectMapper;
     private OrchestratorService orchestratorService;
+    private PromptVersionLogger promptVersionLogger;
+    private MetricsStore metricsStore;
 
     @BeforeEach
     void setUp() {
@@ -53,7 +57,7 @@ class OrchestratorFailureModeTests {
         when(requestSpec.call()).thenReturn(callResponseSpec);
 
         orchestratorService = new OrchestratorService(
-                builder, subAgentTools, validator, objectMapper);
+                builder, subAgentTools, validator, objectMapper,promptVersionLogger,metricsStore);
     }
 
     // Scenario 1 — sub-agent returns null

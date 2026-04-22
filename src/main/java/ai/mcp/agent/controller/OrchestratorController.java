@@ -3,7 +3,6 @@ package ai.mcp.agent.controller;
 import ai.mcp.agent.dto.TaskRequest;
 import ai.mcp.agent.dto.TaskResponse;
 import ai.mcp.agent.service.OrchestratorService;
-import ai.mcp.agent.tools.SubAgentTools;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -15,11 +14,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class OrchestratorController {
 
     private final OrchestratorService orchestratorService;
-    private final SubAgentTools subAgentTools;
 
-    public OrchestratorController(OrchestratorService orchestratorService, SubAgentTools subAgentTools) {
+    public OrchestratorController(OrchestratorService orchestratorService) {
         this.orchestratorService = orchestratorService;
-        this.subAgentTools = subAgentTools;
     }
 
     @PostMapping("/task")

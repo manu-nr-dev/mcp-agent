@@ -3,15 +3,21 @@ package ai.mcp.agent.service;
 import ai.mcp.agent.context.BudgetHolder;
 import ai.mcp.agent.exception.OrchestratorException;
 import ai.mcp.agent.model.AgentBudget;
+import ai.mcp.agent.model.AgentBudgetSnapshot;
 import ai.mcp.agent.model.AgentResult;
 import ai.mcp.agent.tools.SubAgentTools;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.metadata.Usage;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
+import java.util.UUID;
+
 
 @Service
 public class OrchestratorService {
@@ -23,11 +29,13 @@ public class OrchestratorService {
     private final SubAgentTools subAgentTools;
     private final ResultValidator validator;
     private final ObjectMapper objectMapper;
+    private final PromptVersionLogger promptVersionLogger;
+    private final MetricsStore metricsStore;
 
     public OrchestratorService(ChatClient.Builder builder,
                                SubAgentTools subAgentTools,
                                ResultValidator validator,
-                               ObjectMapper objectMapper) {
+                               ObjectMapper objectMapper, PromptVersionLogger promptVersionLogger, MetricsStore metricsStore) {
         this.chatClient = builder
                 .defaultSystem("""
                 You are an orchestrator with two tools:
@@ -48,51 +56,88 @@ public class OrchestratorService {
         this.subAgentTools = subAgentTools;
         this.validator = validator;
         this.objectMapper = objectMapper;
+        this.promptVersionLogger = promptVersionLogger;
+        this.metricsStore = metricsStore;
+    }
+
+    @PostConstruct
+    public void logPromptVersion() {
+        promptVersionLogger.hashAndLog("orchestrator", """
+                You are an orchestrator with two tools:
+                - delegateResearch: use ONLY for knowledge base queries, past incidents, runbook lookups
+                - delegateAction: use ONLY for product searches and database queries
+                
+                Routing rules:
+                - If the task is about incidents, errors, or procedures → call delegateResearch only
+                - If the task is about products or data → call delegateAction only
+                - If the task needs both → call both
+                
+                Do NOT call a tool unless the task requires it.
+                After getting tool results, respond with ONLY valid JSON, no explanation, no preamble:
+                { "research": "...", "action": "...", "summary": "..." }
+                Use null for any tool you did not call.
+                """);
     }
 
     public String orchestrate(String task) {
         AgentBudget budget = new AgentBudget(5000);
-        BudgetHolder.set(budget);
+        String requestId = UUID.randomUUID().toString();
         Exception lastException = null;
 
         for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            final int currentAttempt = attempt;
             try {
-                logger.info("Orchestrator attempt {}/{}", attempt, MAX_RETRIES);
+                String result = ScopedValue
+                        .where(BudgetHolder.BUDGET, budget)
+                        .where(BudgetHolder.REQUEST_ID, requestId)
+                        .call(() -> {
+                            logger.info("[{}] Orchestrator attempt {}/{}", requestId, currentAttempt, MAX_RETRIES);
 
-                String raw = chatClient.prompt()
-                        .user(task)
-                        .tools(subAgentTools)
-                        .call()
-                        .content();
+                            ChatResponse response = chatClient.prompt()
+                                    .user(task)
+                                    .tools(subAgentTools)
+                                    .call()
+                                    .chatResponse();
 
-                // Rough orchestrator-level token estimate
-                // Day 59 will replace this with actual usage from ChatResponse
-                budget.record("orchestrator", estimateTokens(raw));
+                            String raw = response.getResult().getOutput().getText();
+                            int tokens = extractTokens(response, raw);
+                            budget.record("orchestrator", tokens);
 
-                if (budget.isBudgetExceeded()) {
-                    logger.warn("Budget exceeded after orchestrator call: {}", budget.summary());
-                }
+                            if (budget.isBudgetExceeded()) {
+                                logger.warn("[{}] Budget exceeded after orchestrator call: {}", requestId, budget.summary());
+                            }
 
-                logger.info(budget.summary());
-                return validateAndExtract(raw);
+                            logger.info("[{}] {}", requestId, budget.summary());
+                            return validateAndExtract(raw);
+                        });
+
+                // snapshot after success — outside ScopedValue scope, budget is fully populated
+                metricsStore.record(AgentBudgetSnapshot.of(requestId, budget));
+                return result;
 
             } catch (OrchestratorException e) {
                 lastException = e;
-                logger.warn("Attempt {}/{} failed: {}", attempt, MAX_RETRIES, e.getMessage());
-            }finally {
-                BudgetHolder.clear();
+                logger.warn("[{}] Attempt {}/{} failed: {}", requestId, attempt, MAX_RETRIES, e.getMessage());
+            } catch (Exception e) {
+                lastException = new OrchestratorException("Unexpected error: " + e.getMessage());
+                logger.error("[{}] Unexpected error on attempt {}: {}", requestId, attempt, e.getMessage());
             }
-
         }
 
         throw new OrchestratorException(
                 "All " + MAX_RETRIES + " attempts failed. Last error: " + lastException.getMessage());
     }
 
-    private int estimateTokens(String text) {
-        if (text == null) return 0;
-        // rough approximation: 1 token ≈ 4 chars
-        return text.length() / 4;
+    private int extractTokens(ChatResponse response, String text) {
+        try {
+            Usage usage = response.getMetadata().getUsage();
+            if (usage != null && usage.getTotalTokens() != null && usage.getTotalTokens() > 0) {
+                return usage.getTotalTokens().intValue();
+            }
+        } catch (Exception e) {
+            logger.warn("Token metadata unavailable, falling back to estimate: {}", e.getMessage());
+        }
+        return text == null ? 0 : text.length() / 4;
     }
 
     private String validateAndExtract(String raw) {
