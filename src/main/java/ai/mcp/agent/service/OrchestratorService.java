@@ -22,7 +22,7 @@ import java.util.UUID;
 @Service
 public class OrchestratorService {
 
-    private static final int MAX_RETRIES = 2;
+    private static final int MAX_RETRIES = 3;
     private final Logger logger = LoggerFactory.getLogger(OrchestratorService.class);
 
     private final ChatClient chatClient;
